@@ -1,231 +1,16 @@
-// import io
-// import os
-// import shutil
-// import zipfile
-// import aiofiles
-// from typing import List
-
-// import uvicorn
-// from fastapi import FastAPI, File, UploadFile, Response, Request
-// from fastapi.responses import JSONResponse
-
-// class ImageTooManyException(Exception):
-//     def __init__(self, name: str):
-//         self.name = name
-
-// class DirNotExistException(Exception):
-//     def __init__(self, name: str):
-//         self.name = name
-
-// class ImageNotExistException(Exception):
-//     def __init__(self, name: str):
-//         self.name = name
-
-// class NonImageException(Exception):
-//     def __init__(self, name: str):
-//         self.name = name
-
-// app = FastAPI()
-
-// image_suffix = ['jpg', 'png', 'jpeg', 'bmp', 'gif', 'webp']
-
-// @app.exception_handler(ImageTooManyException)
-// async def unicorn_exception_handler(request: Request, exc: ImageTooManyException):
-//     return JSONResponse(
-//         status_code=500,
-//         content={
-//             'code': 1019,
-//             'msg': '上传图片超过4张，请删除后再上传',
-//             'data': exc.name
-//         }
-//     )
-
-// @app.exception_handler(DirNotExistException)
-// async def unicorn_exception_handler(request: Request, exc: DirNotExistException):
-//     return JSONResponse(
-//         status_code=500,
-//         content={
-//             'code': 1020,
-//             'msg': '文件夹不存在',
-//             'data': exc.name
-//         }
-//     )
-
-// @app.exception_handler(ImageNotExistException)
-// async def unicorn_exception_handler(request: Request, exc: ImageNotExistException):
-//     return JSONResponse(
-//         status_code=500,
-//         content={
-//             'code': 1021,
-//             'msg': '图片不存在',
-//             'data': exc.name
-//         }
-//     )
-
-// @app.exception_handler(NonImageException)
-// async def unicorn_exception_handler(request: Request, exc: NonImageException):
-//     return JSONResponse(
-//         status_code=500,
-//         content={
-//             'code': 1022,
-//             'msg': '上传的文件中包含非图片文件',
-//             'data': exc.name
-//         }
-//     )
-
-// def check_if_files_too_many(path):
-//     length = len(os.listdir(path))
-//     if length >= 4:
-//         raise ImageTooManyException(name='image more than 4 error')
-
-// def check_if_files_are_image(files):
-//     for file in files:
-//         if file.filename.split('.')[-1] not in image_suffix:
-//             raise ImageTooManyException(name='some files are not image')
-
-// async def zip_files(filenames):
-//     s = io.BytesIO()
-//     zf = zipfile.ZipFile(s, 'w')
-//     for fpath in filenames:
-//         if fpath.split('.')[-1] not in image_suffix:
-//             continue
-//         _, fname = os.path.split(fpath)
-//         async with aiofiles.open(fpath, 'rb') as f:
-//             zf.writestr(fname, await f.read())
-//     zf.close()
-//     return Response(
-//         s.getvalue(),
-//         media_type='application/x-zip-compressed',
-//         headers={
-//             'Content-Disposition': 'attachment;filename=archive.zip'
-//         }
-//     )
-
-// @ app.post('/upload/{_type}/{_id}')
-// async def upload_image(_type: str, _id: int, files: List[UploadFile] = File(...)):
-//     # check_if_files_are_image(files)
-//     if not os.path.exists(f'/root/image/{_type}/{_id}'):
-//         os.makedirs(f'/root/image/{_type}/{_id}')
-//     if (len(files) + len(os.listdir(f'/root/image/{_type}/{_id}'))) > 4:
-//         raise ImageTooManyException(name='image more than 4 error')
-//     if files[0].filename == '':
-//         return {
-//             'code': 500,
-//             'msg': 'no image uploaded',
-//             'data': [f'/root/image/{_type}/{_id}/' + i for i in os.listdir(f'/root/image/{_type}/{_id}') if i.split('.')[-1] in image_suffix]
-//         }
-//     try:
-//         for file in files:
-//             check_if_files_too_many(f'/root/image/{_type}/{_id}')
-//             if file.filename.split('.')[-1] not in image_suffix:
-//                 continue
-//             async with aiofiles.open(f'/root/image/{_type}/{_id}/{file.filename}', 'wb') as f:
-//                 await f.write(await file.read())
-//     except Exception as e:
-//         return {
-//             'code': 500,
-//             'msg': 'image upload fail',
-//             'data': [f'/root/image/{_type}/{_id}/' + i for i in os.listdir(f'/root/image/{_type}/{_id}') if i.split('.')[-1] in image_suffix]
-//         }
-//     return {
-//         'code': 200,
-//         'msg': 'image upload success',
-//         'data': [f'/root/image/{_type}/{_id}/' + i for i in os.listdir(f'/root/image/{_type}/{_id}') if i.split('.')[-1] in image_suffix]
-//     }
-
-// @ app.get('/download/{_type}/{_id}')
-// async def download_image(_type: str, _id: int):
-//     if not os.path.exists(f'/root/image/{_type}/{_id}'):
-//         raise DirNotExistException(name='dir not exist')
-//     filenames = [f'/root/image/{_type}/{_id}/' +
-//                  i for i in os.listdir(f'/root/image/{_type}/{_id}')]
-//     return await zip_files(filenames)
-
-// @ app.get('/download/{_type}/{_id}/{filename}')
-// async def download_image(_type: str, _id: int, filename: str):
-//     if not os.path.exists(f'/root/image/{_type}/{_id}'):
-//         raise DirNotExistException(name='dir not exist')
-//     return await zip_files([f'/root/image/{_type}/{_id}/{filename}'])
-
-// @ app.get('/delete/{_type}/{_id}/{filename}')
-// def delete_image(_type: str, _id: int, filename: str):
-//     if not os.path.exists(f'/root/image/{_type}/{_id}'):
-//         raise DirNotExistException(name='dir not exist')
-//     if not os.path.exists(f'/root/image/{_type}/{_id}/{filename}'):
-//         raise ImageNotExistException(name='image not exist')
-//     os.remove(f'/root/image/{_type}/{_id}/{filename}')
-//     # 如果文件夹已经空了，就删除这个文件夹
-//     if len(os.listdir(f'/root/image/{_type}/{_id}')) == 0:
-//         shutil.rmtree(f'/root/image/{_type}/{_id}')
-//     return {
-//         'code': 200,
-//         'msg': 'image delete success',
-//         'data': None
-//     }
-
-// @ app.get('/delete/{_type}/{_id}')
-// def delete_image(_type: str, _id: int):
-//     if not os.path.exists(f'/root/image/{_type}/{_id}'):
-//         raise DirNotExistException(name='dir not exist')
-//     shutil.rmtree(f'/root/image/{_type}/{_id}')
-//     return {
-//         'code': 200,
-//         'msg': 'image delete success',
-//         'data': None
-//     }
-
-// if __name__ == '__main__':
-//     uvicorn.run(app, host='0.0.0.0', port=8082)
-
-use std::collections::HashMap;
-
-use poem::{
-    error::{BadRequest, InternalServerError},
-    listener::TcpListener,
-    Result, Route, Server,
-};
+use async_zip::tokio::write::ZipFileWriter as AsyncZipFileWriter;
+use async_zip::{Compression, ZipEntryBuilder};
+use poem::{listener::TcpListener, web::Multipart, Result, Route, Server};
 use poem_openapi::{
     param::Path,
     payload::{Attachment, AttachmentType, Json},
-    types::multipart::Upload,
-    ApiResponse, Multipart, Object, OpenApi, OpenApiService,
+    ApiResponse, Object, OpenApi, OpenApiService,
 };
+use std::ops::Deref;
 use std::path::Path as FilePath;
 use std::path::PathBuf;
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
-use tokio::sync::Mutex;
-use zip::write::FileOptions;
-use zip::ZipWriter;
 
-#[derive(Debug, Object, Clone)]
-struct File {
-    name: String,
-    desc: Option<String>,
-    content_type: Option<String>,
-    filename: Option<String>,
-    data: Vec<u8>,
-}
-
-#[derive(Debug, ApiResponse)]
-enum FileResponse {
-    #[oai(status = 200)]
-    Ok(Attachment<Vec<u8>>),
-    /// File not found
-    #[oai(status = 404)]
-    NotFound,
-}
-
-struct Status {
-    id: u64,
-    files: HashMap<u64, File>,
-}
-
-#[derive(Debug, Multipart)]
-struct UploadPayload {
-    name: String,
-    desc: Option<String>,
-    file: Vec<Upload>,
-}
+static IMAGE_TYPE: [&str; 5] = ["jpg", "jpeg", "png", "gif", "webp"];
 
 #[derive(Debug, Object, Clone)]
 struct ResultVo {
@@ -234,83 +19,252 @@ struct ResultVo {
     data: Option<String>,
 }
 
+#[derive(ApiResponse)]
+enum UploadResponse {
+    #[oai(status = 200)]
+    Success(Json<ResultVo>),
+    #[oai(status = 500)]
+    InternalServerError(Json<ResultVo>),
+}
+
+#[derive(ApiResponse)]
+enum DownloadResponse {
+    #[oai(status = 200)]
+    Success(Attachment<Vec<u8>>),
+    #[oai(status = 500)]
+    InternalServerError(Json<ResultVo>),
+}
+
+#[derive(ApiResponse)]
+enum DeleteResponse {
+    #[oai(status = 200)]
+    Success(Json<ResultVo>),
+}
+
+async fn zip_files(paths: Vec<String>) -> tokio::io::Result<Vec<u8>> {
+    let mut file = Vec::new();
+    let mut writer = AsyncZipFileWriter::with_tokio(&mut file);
+    for path in paths {
+        let path_buf = PathBuf::from(&path);
+        let file_name = path_buf.file_name().unwrap().to_str().unwrap();
+        let data = tokio::fs::read(&path).await?;
+        let builder = ZipEntryBuilder::new(file_name.into(), Compression::Deflate);
+        writer
+            .write_entry_whole(builder, &data)
+            .await
+            .map_err(|e| {
+                zip::result::ZipError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("无法写入文件: {}", e),
+                ))
+            })?;
+    }
+    writer.close().await.map_err(|e| {
+        zip::result::ZipError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("无法关闭文件: {}", e),
+        ))
+    })?;
+    Ok(file)
+}
+
 struct Api;
 
 #[OpenApi]
 impl Api {
-    #[oai(path = "/upload", method = "post")]
+    #[oai(path = "/upload/:dir_type/:dir_id", method = "post")]
     async fn upload(
         &self,
         dir_type: Path<String>,
         dir_id: Path<u64>,
-        upload: UploadPayload,
-    ) -> Result<Json<ResultVo>> {
-        let dir_path = format!(
-            "/root/image/{}/{}",
-            dir_type.to_string(),
-            dir_id.to_string()
-        );
+        mut multipart: Multipart,
+    ) -> Result<UploadResponse> {
+        let dir_path = format!("/root/image/{}/{}", dir_type.deref(), dir_id.deref());
         if !FilePath::new(&dir_path).exists() {
-            tokio::fs::create_dir_all(&dir_path)
-                .await
-                .map_err(InternalServerError)?;
+            tokio::fs::create_dir_all(&dir_path).await.map_err(|e| {
+                UploadResponse::InternalServerError(Json(ResultVo {
+                    code: 500,
+                    msg: format!("在创建目录时出错: {}", e),
+                    data: None,
+                }))
+            })?;
         }
-        for file in upload.file {
-            let filename = file.file_name().map(|s| s.to_owned());
-            let data = file.into_vec().await.map_err(BadRequest);
-            tokio::fs::write(format!("{}/{}", dir_path, filename.unwrap()), data.unwrap())
-                .await
-                .unwrap();
+        let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+        let mut multipart_count = 0;
+        while let Some(field) = multipart.next_field().await? {
+            let file_name = field.file_name().map(|s| s.to_owned()).unwrap();
+            let data = field.bytes().await.map_err(|e| {
+                UploadResponse::InternalServerError(Json(ResultVo {
+                    code: 500,
+                    msg: format!("读取上传的文件失败: {}", e),
+                    data: None,
+                }))
+            })?;
+            if !IMAGE_TYPE.contains(&file_name.split(".").last().unwrap()) {
+                return Err(UploadResponse::InternalServerError(Json(ResultVo {
+                    code: 500,
+                    msg: "上传的文件不是图片".to_string(),
+                    data: None,
+                }))
+                .into());
+            }
+            if data.len() > 500 * 1024 {
+                return Err(UploadResponse::InternalServerError(Json(ResultVo {
+                    code: 500,
+                    msg: "文件大小超过500kb".to_string(),
+                    data: None,
+                }))
+                .into());
+            }
+            files.push((file_name, data));
+            multipart_count += 1;
+            if multipart_count > 4 {
+                return Err(UploadResponse::InternalServerError(Json(ResultVo {
+                    code: 500,
+                    msg: "上传的文件数量超过4个".to_string(),
+                    data: None,
+                }))
+                .into());
+            }
         }
-        Ok(Json(ResultVo {
+        let mut file_read_dir = tokio::fs::read_dir(&dir_path).await.map_err(|e| {
+            UploadResponse::InternalServerError(Json(ResultVo {
+                code: 500,
+                msg: format!("无法打开指定的目录: {}", e),
+                data: None,
+            }))
+        })?;
+        let mut file_count: u8 = 0;
+        while let Some(_) = file_read_dir.next_entry().await.unwrap() {
+            file_count += 1;
+        }
+        if file_count + multipart_count > 4 {
+            return Err(UploadResponse::InternalServerError(Json(ResultVo {
+                code: 500,
+                msg: "上传的文件数量超过4个".to_string(),
+                data: None,
+            }))
+            .into());
+        }
+        for (file_name, data) in files {
+            tokio::fs::write(format!("{}/{}", dir_path, file_name), data)
+                .await
+                .map_err(|e| {
+                    UploadResponse::InternalServerError(Json(ResultVo {
+                        code: 500,
+                        msg: format!("写入文件失败: {}", e),
+                        data: None,
+                    }))
+                })?;
+        }
+
+        Ok(UploadResponse::Success(Json(ResultVo {
             code: 200,
-            msg: "image upload success".to_string(),
+            msg: "图片上传成功".to_string(),
             data: None,
-        }))
+        })))
     }
 
-    // /// Get file
-    // #[oai(path = "/files/:id", method = "get")]
-    // async fn get(&self, id: Path<u64>) -> GetFileResponse {
-    //     let status = self.status.lock().await;
-    //     match status.files.get(&id) {
-    //         Some(file) => {
-    //             let mut attachment =
-    //                 Attachment::new(file.data.clone()).attachment_type(AttachmentType::Attachment);
-    //             if let Some(filename) = &file.filename {
-    //                 attachment = attachment.filename(filename);
-    //             }
-    //             GetFileResponse::Ok(attachment)
-    //         }
-    //         None => GetFileResponse::NotFound,
-    //     }
-    // }
-
-    async fn zip_files(paths: &[&str]) -> zip::result::ZipResult<Vec<u8>> {
-        let mut buffer = Vec::new();
-        let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buffer));
-        let options = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
-        for path in paths {
-            let path_buf = PathBuf::from(path);
-            let file_name = path_buf.file_name().unwrap().to_str().unwrap();
-            let mut file = tokio::fs::File::open(path).await?;
-            zip.start_file(file_name, options)?;
-            // 我怎么把这些文件都写进zip里面去呢？
-            file.read_to_end(&mut buffer).await?;
-            zip.write_all(&*buffer).await?;
+    #[oai(path = "/download/:dir_type/:dir_id", method = "get")]
+    async fn download(
+        &self,
+        dir_type: Path<String>,
+        dir_id: Path<u64>,
+    ) -> Result<DownloadResponse> {
+        let dir_path = format!("/root/image/{}/{}", dir_type.deref(), dir_id.deref());
+        let mut paths = match tokio::fs::read_dir(&dir_path).await {
+            Ok(paths) => paths,
+            Err(_) => {
+                tokio::fs::create_dir_all(&dir_path).await.unwrap_or_default();
+                tokio::fs::read_dir(&dir_path).await.map_err(|e| {
+                    DownloadResponse::InternalServerError(Json(ResultVo {
+                        code: 500,
+                        msg: format!("无法打开指定的目录: {}", e),
+                        data: None,
+                    }))
+                })?
+            }
+        };
+        let mut paths_vec = Vec::new();
+        while let Some(path) = paths.next_entry().await.unwrap() {
+            let path_str = path.file_name().into_string().unwrap();
+            paths_vec.push(format!("{}/{}", &dir_path, &path_str));
         }
+        let zip_file = zip_files(paths_vec).await.map_err(|e| {
+            DownloadResponse::InternalServerError(Json(ResultVo {
+                code: 500,
+                msg: format!("压缩文件时出错: {}", e),
+                data: None,
+            }))
+        })?;
+        Ok(DownloadResponse::Success(
+            Attachment::new(zip_file)
+                .filename("archive.zip".to_string())
+                .attachment_type(AttachmentType::Attachment),
+        ))
+    }
 
-        zip.finish()?;
-        Ok(zip.into_inner()?)
+    #[oai(path = "/download/:dir_type/:dir_id/:file_name", method = "get")]
+    async fn download_file(
+        &self,
+        dir_type: Path<String>,
+        dir_id: Path<u64>,
+        file_name: Path<String>,
+    ) -> Result<DownloadResponse> {
+        let dir_path = format!("/root/image/{}/{}", dir_type.deref(), dir_id.deref());
+        let file_path = format!("{}/{}", dir_path, file_name.to_string());
+        let path_vec = vec![file_path];
+        let zip_file = zip_files(path_vec).await.map_err(|e| {
+            DownloadResponse::InternalServerError(Json(ResultVo {
+                code: 500,
+                msg: format!("压缩文件时出错: {}", e),
+                data: None,
+            }))
+        })?;
+        Ok(DownloadResponse::Success(
+            Attachment::new(zip_file)
+                .filename(file_name.to_string())
+                .attachment_type(AttachmentType::Attachment),
+        ))
+    }
+
+    #[oai(path = "/delete/:dir_type/:dir_id", method = "get")]
+    async fn delete(&self, dir_type: Path<String>, dir_id: Path<u64>) -> Result<DeleteResponse> {
+        let dir_path = format!("/root/image/{}/{}", dir_type.deref(), dir_id.deref());
+        tokio::fs::remove_dir_all(dir_path)
+            .await
+            .unwrap_or_default();
+        Ok(DeleteResponse::Success(Json(ResultVo {
+            code: 200,
+            msg: "目录删除成功".to_string(),
+            data: None,
+        })))
+    }
+
+    #[oai(path = "/delete/:dir_type/:dir_id/:file_name", method = "get")]
+    async fn delete_file(
+        &self,
+        dir_type: Path<String>,
+        dir_id: Path<u64>,
+        file_name: Path<String>,
+    ) -> Result<DeleteResponse> {
+        let dir_path = format!("/root/image/{}/{}", dir_type.deref(), dir_id.deref());
+        let file_path = format!("{}/{}", dir_path, file_name.deref());
+        tokio::fs::remove_file(file_path).await.unwrap_or_default();
+        Ok(DeleteResponse::Success(Json(ResultVo {
+            code: 200,
+            msg: "文件删除成功".to_string(),
+            data: None,
+        })))
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
-    let api_service =
-        OpenApiService::new(Api {}, "Upload Files", "1.0").server("http://localhost:3000/api");
+    let api_service = OpenApiService::new(Api, "Image host", "1.0").server("http://localhost:8082");
+    let app = Route::new().nest("/", api_service);
 
-    Server::new(TcpListener::bind("127.0.0.1:3000"))
-        .run(Route::new().nest("/api", api_service))
+    Server::new(TcpListener::bind("0.0.0.0:8082"))
+        .run(app)
         .await
 }
