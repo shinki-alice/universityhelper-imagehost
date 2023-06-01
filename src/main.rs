@@ -1,5 +1,6 @@
 use async_zip::tokio::write::ZipFileWriter as AsyncZipFileWriter;
 use async_zip::{Compression, ZipEntryBuilder};
+use mimalloc::MiMalloc;
 use poem::{listener::TcpListener, web::Multipart, Result, Route, Server};
 use poem_openapi::{
     param::Path,
@@ -10,7 +11,10 @@ use std::ops::Deref;
 use std::path::Path as FilePath;
 use std::path::PathBuf;
 
-static IMAGE_TYPE: [&str; 5] = ["jpg", "jpeg", "png", "gif", "webp"];
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
+
+const IMAGE_TYPE: [&str; 5] = ["jpg", "jpeg", "png", "gif", "webp"];
 
 #[derive(Debug, Object, Clone)]
 struct ResultVo {
@@ -108,10 +112,10 @@ impl Api {
                 }))
                 .into());
             }
-            if data.len() > 500 * 1024 {
+            if data.len() > 200 * 1024 {
                 return Err(UploadResponse::InternalServerError(Json(ResultVo {
                     code: 500,
-                    msg: "文件大小超过500kb".to_string(),
+                    msg: "文件大小超过200kb".to_string(),
                     data: None,
                 }))
                 .into());
@@ -135,7 +139,13 @@ impl Api {
             }))
         })?;
         let mut file_count: u8 = 0;
-        while let Some(_) = file_read_dir.next_entry().await.unwrap() {
+        while let Some(_) = file_read_dir.next_entry().await.map_err(|e| {
+            UploadResponse::InternalServerError(Json(ResultVo {
+                code: 500,
+                msg: format!("无法读取目录: {}", e),
+                data: None,
+            }))
+        })? {
             file_count += 1;
         }
         if file_count + multipart_count > 4 {
@@ -175,9 +185,13 @@ impl Api {
         let mut paths = match tokio::fs::read_dir(&dir_path).await {
             Ok(paths) => paths,
             Err(_) => {
-                tokio::fs::create_dir_all(&dir_path)
-                    .await
-                    .unwrap_or_default();
+                tokio::fs::create_dir_all(&dir_path).await.map_err(|e| {
+                    DownloadResponse::InternalServerError(Json(ResultVo {
+                        code: 500,
+                        msg: format!("在创建目录时出错: {}", e),
+                        data: None,
+                    }))
+                })?;
                 tokio::fs::read_dir(&dir_path).await.map_err(|e| {
                     DownloadResponse::InternalServerError(Json(ResultVo {
                         code: 500,
@@ -188,7 +202,13 @@ impl Api {
             }
         };
         let mut paths_vec = Vec::new();
-        while let Some(path) = paths.next_entry().await.unwrap() {
+        while let Some(path) = paths.next_entry().await.map_err(|e| {
+            DownloadResponse::InternalServerError(Json(ResultVo {
+                code: 500,
+                msg: format!("无法读取目录: {}", e),
+                data: None,
+            }))
+        })? {
             let path_str = path.file_name().into_string().unwrap();
             paths_vec.push(format!("{}/{}", &dir_path, &path_str));
         }
@@ -233,9 +253,13 @@ impl Api {
     #[oai(path = "/delete/:dir_type/:dir_id", method = "get")]
     async fn delete(&self, dir_type: Path<String>, dir_id: Path<u64>) -> Result<DeleteResponse> {
         let dir_path = format!("/root/image/{}/{}", dir_type.deref(), dir_id.deref());
-        tokio::fs::remove_dir_all(&dir_path)
-            .await
-            .unwrap_or_default();
+        tokio::fs::remove_dir_all(&dir_path).await.map_err(|e| {
+            DeleteResponse::Success(Json(ResultVo {
+                code: 500,
+                msg: format!("目录删除失败: {}", e),
+                data: None,
+            }))
+        })?;
         Ok(DeleteResponse::Success(Json(ResultVo {
             code: 200,
             msg: "目录删除成功".to_string(),
@@ -252,7 +276,13 @@ impl Api {
     ) -> Result<DeleteResponse> {
         let dir_path = format!("/root/image/{}/{}", dir_type.deref(), dir_id.deref());
         let file_path = format!("{}/{}", dir_path, file_name.deref());
-        tokio::fs::remove_file(&file_path).await.unwrap_or_default();
+        tokio::fs::remove_file(&file_path).await.map_err(|e| {
+            DeleteResponse::Success(Json(ResultVo {
+                code: 500,
+                msg: format!("文件删除失败: {}", e),
+                data: None,
+            }))
+        })?;
         Ok(DeleteResponse::Success(Json(ResultVo {
             code: 200,
             msg: "文件删除成功".to_string(),
