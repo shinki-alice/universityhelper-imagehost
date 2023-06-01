@@ -709,6 +709,7 @@ dependencies = [
  "mimalloc",
  "poem",
  "poem-openapi",
+ "serde_json",
  "tokio",
  "zip",
 ]

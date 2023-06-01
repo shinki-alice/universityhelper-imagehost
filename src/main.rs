@@ -7,6 +7,7 @@ use poem_openapi::{
     payload::{Attachment, AttachmentType, Json},
     ApiResponse, Object, OpenApi, OpenApiService,
 };
+use serde_json::json;
 use std::ops::Deref;
 use std::path::Path as FilePath;
 use std::path::PathBuf;
@@ -17,18 +18,18 @@ static GLOBAL: MiMalloc = MiMalloc;
 const IMAGE_TYPE: [&str; 5] = ["jpg", "jpeg", "png", "gif", "webp"];
 
 #[derive(Debug, Object, Clone)]
-struct ResultVo {
+struct JsonObjectResultVo {
     code: u16,
     msg: String,
-    data: Option<String>,
+    data: serde_json::Value,
 }
 
 #[derive(ApiResponse)]
 enum UploadResponse {
     #[oai(status = 200)]
-    Success(Json<ResultVo>),
+    Success(Json<JsonObjectResultVo>),
     #[oai(status = 500)]
-    InternalServerError(Json<ResultVo>),
+    InternalServerError(Json<JsonObjectResultVo>),
 }
 
 #[derive(ApiResponse)]
@@ -36,15 +37,15 @@ enum DownloadResponse {
     #[oai(status = 200)]
     Success(Attachment<Vec<u8>>),
     #[oai(status = 500)]
-    InternalServerError(Json<ResultVo>),
+    InternalServerError(Json<JsonObjectResultVo>),
 }
 
 #[derive(ApiResponse)]
 enum DeleteResponse {
     #[oai(status = 200)]
-    Success(Json<ResultVo>),
+    Success(Json<JsonObjectResultVo>),
     #[oai(status = 500)]
-    InternalServerError(Json<ResultVo>),
+    InternalServerError(Json<JsonObjectResultVo>),
 }
 
 async fn zip_files(paths: &Vec<String>) -> tokio::io::Result<Vec<u8>> {
@@ -88,10 +89,10 @@ impl Api {
         let dir_path = format!("/root/image/{}/{}", dir_type.deref(), dir_id.deref());
         if !FilePath::new(&dir_path).exists() {
             tokio::fs::create_dir_all(&dir_path).await.map_err(|e| {
-                UploadResponse::InternalServerError(Json(ResultVo {
+                UploadResponse::InternalServerError(Json(JsonObjectResultVo {
                     code: 500,
                     msg: format!("在创建目录时出错: {}", e),
-                    data: None,
+                    data: json!(null),
                 }))
             })?;
         }
@@ -100,79 +101,88 @@ impl Api {
         while let Some(field) = multipart.next_field().await? {
             let file_name = field.file_name().map(|s| s.to_owned()).unwrap();
             let data = field.bytes().await.map_err(|e| {
-                UploadResponse::InternalServerError(Json(ResultVo {
+                UploadResponse::InternalServerError(Json(JsonObjectResultVo {
                     code: 500,
                     msg: format!("读取上传的文件失败: {}", e),
-                    data: None,
+                    data: json!(null),
                 }))
             })?;
             if !IMAGE_TYPE.contains(&file_name.split(".").last().unwrap()) {
-                return Err(UploadResponse::InternalServerError(Json(ResultVo {
-                    code: 500,
-                    msg: "上传的文件不是图片".to_string(),
-                    data: None,
-                }))
-                .into());
+                return Err(
+                    UploadResponse::InternalServerError(Json(JsonObjectResultVo {
+                        code: 500,
+                        msg: "上传的文件不是图片".to_string(),
+                        data: json!(null),
+                    }))
+                    .into(),
+                );
             }
             if data.len() > 200 * 1024 {
-                return Err(UploadResponse::InternalServerError(Json(ResultVo {
-                    code: 500,
-                    msg: "文件大小超过200kb".to_string(),
-                    data: None,
-                }))
-                .into());
+                return Err(
+                    UploadResponse::InternalServerError(Json(JsonObjectResultVo {
+                        code: 500,
+                        msg: "文件大小超过200kb".to_string(),
+                        data: json!(null),
+                    }))
+                    .into(),
+                );
             }
             files.push((file_name, data));
             multipart_count += 1;
             if multipart_count > 4 {
-                return Err(UploadResponse::InternalServerError(Json(ResultVo {
-                    code: 500,
-                    msg: "上传的文件数量超过4个".to_string(),
-                    data: None,
-                }))
-                .into());
+                return Err(
+                    UploadResponse::InternalServerError(Json(JsonObjectResultVo {
+                        code: 500,
+                        msg: "上传的文件数量超过4个".to_string(),
+                        data: json!(null),
+                    }))
+                    .into(),
+                );
             }
         }
         let mut file_read_dir = tokio::fs::read_dir(&dir_path).await.map_err(|e| {
-            UploadResponse::InternalServerError(Json(ResultVo {
+            UploadResponse::InternalServerError(Json(JsonObjectResultVo {
                 code: 500,
                 msg: format!("无法打开指定的目录: {}", e),
-                data: None,
+                data: json!(null),
             }))
         })?;
-        let mut file_count: u8 = 0;
-        while let Some(_) = file_read_dir.next_entry().await.map_err(|e| {
-            UploadResponse::InternalServerError(Json(ResultVo {
+        let mut file_name_vec = Vec::new();
+        while let Some(file_dir_entry) = file_read_dir.next_entry().await.map_err(|e| {
+            UploadResponse::InternalServerError(Json(JsonObjectResultVo {
                 code: 500,
                 msg: format!("无法读取目录: {}", e),
-                data: None,
+                data: json!(null),
             }))
         })? {
-            file_count += 1;
+            file_name_vec.push(file_dir_entry.file_name().into_string().unwrap());
         }
+        let file_count = file_name_vec.len() as u8;
         if file_count + multipart_count > 4 {
-            return Err(UploadResponse::InternalServerError(Json(ResultVo {
-                code: 500,
-                msg: "上传的文件数量超过4个".to_string(),
-                data: None,
-            }))
-            .into());
+            return Err(
+                UploadResponse::InternalServerError(Json(JsonObjectResultVo {
+                    code: 500,
+                    msg: "上传的文件数量超过4个".to_string(),
+                    data: json!(null),
+                }))
+                .into(),
+            );
         }
         for (file_name, data) in files {
-            tokio::fs::write(format!("{}/{}", dir_path, file_name), data)
-                .await
-                .map_err(|e| {
-                    UploadResponse::InternalServerError(Json(ResultVo {
-                        code: 500,
-                        msg: format!("写入文件失败: {}", e),
-                        data: None,
-                    }))
-                })?;
+            let file_path = format!("{}/{}", dir_path, file_name);
+            tokio::fs::write(&file_path, data).await.map_err(|e| {
+                UploadResponse::InternalServerError(Json(JsonObjectResultVo {
+                    code: 500,
+                    msg: format!("写入文件失败: {}", e),
+                    data: json!(null),
+                }))
+            })?;
+            file_name_vec.push(file_path);
         }
-        Ok(UploadResponse::Success(Json(ResultVo {
+        Ok(UploadResponse::Success(Json(JsonObjectResultVo {
             code: 200,
             msg: "图片上传成功".to_string(),
-            data: None,
+            data: json!(file_name_vec),
         })))
     }
 
@@ -187,37 +197,37 @@ impl Api {
             Ok(paths) => paths,
             Err(_) => {
                 tokio::fs::create_dir_all(&dir_path).await.map_err(|e| {
-                    DownloadResponse::InternalServerError(Json(ResultVo {
+                    DownloadResponse::InternalServerError(Json(JsonObjectResultVo {
                         code: 500,
                         msg: format!("在创建目录时出错: {}", e),
-                        data: None,
+                        data: json!(null),
                     }))
                 })?;
                 tokio::fs::read_dir(&dir_path).await.map_err(|e| {
-                    DownloadResponse::InternalServerError(Json(ResultVo {
+                    DownloadResponse::InternalServerError(Json(JsonObjectResultVo {
                         code: 500,
                         msg: format!("无法打开指定的目录: {}", e),
-                        data: None,
+                        data: json!(null),
                     }))
                 })?
             }
         };
         let mut paths_vec = Vec::new();
         while let Some(path) = paths.next_entry().await.map_err(|e| {
-            DownloadResponse::InternalServerError(Json(ResultVo {
+            DownloadResponse::InternalServerError(Json(JsonObjectResultVo {
                 code: 500,
                 msg: format!("无法读取目录: {}", e),
-                data: None,
+                data: json!(null),
             }))
         })? {
             let path_str = path.file_name().into_string().unwrap();
             paths_vec.push(format!("{}/{}", &dir_path, &path_str));
         }
         let zip_file = zip_files(&paths_vec).await.map_err(|e| {
-            DownloadResponse::InternalServerError(Json(ResultVo {
+            DownloadResponse::InternalServerError(Json(JsonObjectResultVo {
                 code: 500,
                 msg: format!("压缩文件时出错: {}", e),
-                data: None,
+                data: json!(null),
             }))
         })?;
         Ok(DownloadResponse::Success(
@@ -237,10 +247,10 @@ impl Api {
         let dir_path = format!("/root/image/{}/{}", dir_type.deref(), dir_id.deref());
         let file_path = format!("{}/{}", dir_path, file_name.to_string());
         let file = tokio::fs::read(&file_path).await.map_err(|e| {
-            DownloadResponse::InternalServerError(Json(ResultVo {
+            DownloadResponse::InternalServerError(Json(JsonObjectResultVo {
                 code: 500,
                 msg: format!("读取文件失败: {}", e),
-                data: None,
+                data: json!(null),
             }))
         })?;
         Ok(DownloadResponse::Success(
@@ -257,26 +267,26 @@ impl Api {
             Ok(paths) => paths,
             Err(_) => {
                 tokio::fs::create_dir_all(&dir_path).await.map_err(|e| {
-                    DownloadResponse::InternalServerError(Json(ResultVo {
+                    DownloadResponse::InternalServerError(Json(JsonObjectResultVo {
                         code: 500,
                         msg: format!("在创建目录时出错: {}", e),
-                        data: None,
+                        data: json!(null),
                     }))
                 })?;
                 tokio::fs::read_dir(&dir_path).await.map_err(|e| {
-                    DownloadResponse::InternalServerError(Json(ResultVo {
+                    DownloadResponse::InternalServerError(Json(JsonObjectResultVo {
                         code: 500,
                         msg: format!("无法打开指定的目录: {}", e),
-                        data: None,
+                        data: json!(null),
                     }))
                 })?
             }
         };
         let preview_path = paths.next_entry().await.map_err(|e| {
-            DownloadResponse::InternalServerError(Json(ResultVo {
+            DownloadResponse::InternalServerError(Json(JsonObjectResultVo {
                 code: 500,
                 msg: format!("无法读取目录: {}", e),
-                data: None,
+                data: json!(null),
             }))
         })?;
         match preview_path {
@@ -285,10 +295,10 @@ impl Api {
                 let preview_file = tokio::fs::read(format!("{}/{}", &dir_path, &preview_path_str))
                     .await
                     .map_err(|e| {
-                        DownloadResponse::InternalServerError(Json(ResultVo {
+                        DownloadResponse::InternalServerError(Json(JsonObjectResultVo {
                             code: 500,
                             msg: format!("读取文件失败: {}", e),
-                            data: None,
+                            data: json!(null),
                         }))
                     })?;
                 Ok(DownloadResponse::Success(
@@ -297,12 +307,14 @@ impl Api {
                         .attachment_type(AttachmentType::Attachment),
                 ))
             }
-            None => Err(DownloadResponse::InternalServerError(Json(ResultVo {
-                code: 500,
-                msg: "目录为空".to_string(),
-                data: None,
-            }))
-            .into()),
+            None => Err(
+                DownloadResponse::InternalServerError(Json(JsonObjectResultVo {
+                    code: 500,
+                    msg: "目录为空".to_string(),
+                    data: json!(null),
+                }))
+                .into(),
+            ),
         }
     }
 
@@ -310,16 +322,16 @@ impl Api {
     async fn delete(&self, dir_type: Path<String>, dir_id: Path<u64>) -> Result<DeleteResponse> {
         let dir_path = format!("/root/image/{}/{}", dir_type.deref(), dir_id.deref());
         tokio::fs::remove_dir_all(&dir_path).await.map_err(|e| {
-            DeleteResponse::InternalServerError(Json(ResultVo {
+            DeleteResponse::InternalServerError(Json(JsonObjectResultVo {
                 code: 500,
                 msg: format!("目录删除失败: {}", e),
-                data: None,
+                data: json!(null),
             }))
         })?;
-        Ok(DeleteResponse::Success(Json(ResultVo {
+        Ok(DeleteResponse::Success(Json(JsonObjectResultVo {
             code: 200,
             msg: "目录删除成功".to_string(),
-            data: None,
+            data: json!(null),
         })))
     }
 
@@ -333,16 +345,16 @@ impl Api {
         let dir_path = format!("/root/image/{}/{}", dir_type.deref(), dir_id.deref());
         let file_path = format!("{}/{}", dir_path, file_name.deref());
         tokio::fs::remove_file(&file_path).await.map_err(|e| {
-            DeleteResponse::InternalServerError(Json(ResultVo {
+            DeleteResponse::InternalServerError(Json(JsonObjectResultVo {
                 code: 500,
                 msg: format!("文件删除失败: {}", e),
-                data: None,
+                data: json!(null),
             }))
         })?;
-        Ok(DeleteResponse::Success(Json(ResultVo {
+        Ok(DeleteResponse::Success(Json(JsonObjectResultVo {
             code: 200,
             msg: "文件删除成功".to_string(),
-            data: None,
+            data: json!(null),
         })))
     }
 }
