@@ -169,7 +169,6 @@ impl Api {
                     }))
                 })?;
         }
-
         Ok(UploadResponse::Success(Json(ResultVo {
             code: 200,
             msg: "图片上传成功".to_string(),
@@ -228,7 +227,7 @@ impl Api {
         ))
     }
 
-    #[oai(path = "/download/:dir_type/:dir_id/:file_name", method = "get")]
+    #[oai(path = "/download/:dir_type/:dir_id/file/:file_name", method = "get")]
     async fn download_file(
         &self,
         dir_type: Path<String>,
@@ -237,19 +236,74 @@ impl Api {
     ) -> Result<DownloadResponse> {
         let dir_path = format!("/root/image/{}/{}", dir_type.deref(), dir_id.deref());
         let file_path = format!("{}/{}", dir_path, file_name.to_string());
-        let path_vec = vec![file_path];
-        let zip_file = zip_files(&path_vec).await.map_err(|e| {
+        let file = tokio::fs::read(&file_path).await.map_err(|e| {
             DownloadResponse::InternalServerError(Json(ResultVo {
                 code: 500,
-                msg: format!("压缩文件时出错: {}", e),
+                msg: format!("读取文件失败: {}", e),
                 data: None,
             }))
         })?;
         Ok(DownloadResponse::Success(
-            Attachment::new(zip_file)
-                .filename("archive.zip")
+            Attachment::new(file)
+                .filename(file_name.to_string())
                 .attachment_type(AttachmentType::Attachment),
         ))
+    }
+
+    #[oai(path = "/download/:dir_type/:dir_id/preview", method = "get")]
+    async fn preview(&self, dir_type: Path<String>, dir_id: Path<u64>) -> Result<DownloadResponse> {
+        let dir_path = format!("/root/image/{}/{}", dir_type.deref(), dir_id.deref());
+        let mut paths = match tokio::fs::read_dir(&dir_path).await {
+            Ok(paths) => paths,
+            Err(_) => {
+                tokio::fs::create_dir_all(&dir_path).await.map_err(|e| {
+                    DownloadResponse::InternalServerError(Json(ResultVo {
+                        code: 500,
+                        msg: format!("在创建目录时出错: {}", e),
+                        data: None,
+                    }))
+                })?;
+                tokio::fs::read_dir(&dir_path).await.map_err(|e| {
+                    DownloadResponse::InternalServerError(Json(ResultVo {
+                        code: 500,
+                        msg: format!("无法打开指定的目录: {}", e),
+                        data: None,
+                    }))
+                })?
+            }
+        };
+        let preview_path = paths.next_entry().await.map_err(|e| {
+            DownloadResponse::InternalServerError(Json(ResultVo {
+                code: 500,
+                msg: format!("无法读取目录: {}", e),
+                data: None,
+            }))
+        })?;
+        match preview_path {
+            Some(preview_path) => {
+                let preview_path_str = preview_path.file_name().into_string().unwrap();
+                let preview_file = tokio::fs::read(format!("{}/{}", &dir_path, &preview_path_str))
+                    .await
+                    .map_err(|e| {
+                        DownloadResponse::InternalServerError(Json(ResultVo {
+                            code: 500,
+                            msg: format!("读取文件失败: {}", e),
+                            data: None,
+                        }))
+                    })?;
+                Ok(DownloadResponse::Success(
+                    Attachment::new(preview_file)
+                        .filename(preview_path_str)
+                        .attachment_type(AttachmentType::Attachment),
+                ))
+            }
+            None => Err(DownloadResponse::InternalServerError(Json(ResultVo {
+                code: 500,
+                msg: "目录为空".to_string(),
+                data: None,
+            }))
+            .into()),
+        }
     }
 
     #[oai(path = "/delete/:dir_type/:dir_id", method = "get")]
@@ -297,7 +351,6 @@ impl Api {
 async fn main() -> Result<(), std::io::Error> {
     let api_service = OpenApiService::new(Api, "Image host", "1.0").server("http://localhost:8082");
     let app = Route::new().nest("/", api_service);
-
     Server::new(TcpListener::bind("0.0.0.0:8082"))
         .run(app)
         .await
