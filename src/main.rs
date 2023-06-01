@@ -223,7 +223,7 @@ impl Api {
         })?;
         Ok(DownloadResponse::Success(
             Attachment::new(zip_file)
-                .filename("archive.zip".to_string())
+                .filename("archive.zip")
                 .attachment_type(AttachmentType::Attachment),
         ))
     }
@@ -247,7 +247,7 @@ impl Api {
         })?;
         Ok(DownloadResponse::Success(
             Attachment::new(zip_file)
-                .filename(file_name.to_string())
+                .filename("archive.zip")
                 .attachment_type(AttachmentType::Attachment),
         ))
     }
