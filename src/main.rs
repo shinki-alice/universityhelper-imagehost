@@ -43,6 +43,8 @@ enum DownloadResponse {
 enum DeleteResponse {
     #[oai(status = 200)]
     Success(Json<ResultVo>),
+    #[oai(status = 500)]
+    InternalServerError(Json<ResultVo>),
 }
 
 async fn zip_files(paths: &Vec<String>) -> tokio::io::Result<Vec<u8>> {
@@ -254,7 +256,7 @@ impl Api {
     async fn delete(&self, dir_type: Path<String>, dir_id: Path<u64>) -> Result<DeleteResponse> {
         let dir_path = format!("/root/image/{}/{}", dir_type.deref(), dir_id.deref());
         tokio::fs::remove_dir_all(&dir_path).await.map_err(|e| {
-            DeleteResponse::Success(Json(ResultVo {
+            DeleteResponse::InternalServerError(Json(ResultVo {
                 code: 500,
                 msg: format!("目录删除失败: {}", e),
                 data: None,
@@ -277,7 +279,7 @@ impl Api {
         let dir_path = format!("/root/image/{}/{}", dir_type.deref(), dir_id.deref());
         let file_path = format!("{}/{}", dir_path, file_name.deref());
         tokio::fs::remove_file(&file_path).await.map_err(|e| {
-            DeleteResponse::Success(Json(ResultVo {
+            DeleteResponse::InternalServerError(Json(ResultVo {
                 code: 500,
                 msg: format!("文件删除失败: {}", e),
                 data: None,
