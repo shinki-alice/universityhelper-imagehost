@@ -41,7 +41,7 @@ enum DeleteResponse {
     Success(Json<ResultVo>),
 }
 
-async fn zip_files(paths: Vec<String>) -> tokio::io::Result<Vec<u8>> {
+async fn zip_files(paths: &Vec<String>) -> tokio::io::Result<Vec<u8>> {
     let mut file = Vec::new();
     let mut writer = AsyncZipFileWriter::with_tokio(&mut file);
     for path in paths {
@@ -175,7 +175,9 @@ impl Api {
         let mut paths = match tokio::fs::read_dir(&dir_path).await {
             Ok(paths) => paths,
             Err(_) => {
-                tokio::fs::create_dir_all(&dir_path).await.unwrap_or_default();
+                tokio::fs::create_dir_all(&dir_path)
+                    .await
+                    .unwrap_or_default();
                 tokio::fs::read_dir(&dir_path).await.map_err(|e| {
                     DownloadResponse::InternalServerError(Json(ResultVo {
                         code: 500,
@@ -190,7 +192,7 @@ impl Api {
             let path_str = path.file_name().into_string().unwrap();
             paths_vec.push(format!("{}/{}", &dir_path, &path_str));
         }
-        let zip_file = zip_files(paths_vec).await.map_err(|e| {
+        let zip_file = zip_files(&paths_vec).await.map_err(|e| {
             DownloadResponse::InternalServerError(Json(ResultVo {
                 code: 500,
                 msg: format!("压缩文件时出错: {}", e),
@@ -214,7 +216,7 @@ impl Api {
         let dir_path = format!("/root/image/{}/{}", dir_type.deref(), dir_id.deref());
         let file_path = format!("{}/{}", dir_path, file_name.to_string());
         let path_vec = vec![file_path];
-        let zip_file = zip_files(path_vec).await.map_err(|e| {
+        let zip_file = zip_files(&path_vec).await.map_err(|e| {
             DownloadResponse::InternalServerError(Json(ResultVo {
                 code: 500,
                 msg: format!("压缩文件时出错: {}", e),
@@ -231,7 +233,7 @@ impl Api {
     #[oai(path = "/delete/:dir_type/:dir_id", method = "get")]
     async fn delete(&self, dir_type: Path<String>, dir_id: Path<u64>) -> Result<DeleteResponse> {
         let dir_path = format!("/root/image/{}/{}", dir_type.deref(), dir_id.deref());
-        tokio::fs::remove_dir_all(dir_path)
+        tokio::fs::remove_dir_all(&dir_path)
             .await
             .unwrap_or_default();
         Ok(DeleteResponse::Success(Json(ResultVo {
@@ -250,7 +252,7 @@ impl Api {
     ) -> Result<DeleteResponse> {
         let dir_path = format!("/root/image/{}/{}", dir_type.deref(), dir_id.deref());
         let file_path = format!("{}/{}", dir_path, file_name.deref());
-        tokio::fs::remove_file(file_path).await.unwrap_or_default();
+        tokio::fs::remove_file(&file_path).await.unwrap_or_default();
         Ok(DeleteResponse::Success(Json(ResultVo {
             code: 200,
             msg: "文件删除成功".to_string(),
