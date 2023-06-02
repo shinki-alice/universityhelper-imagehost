@@ -169,15 +169,14 @@ impl Api {
             );
         }
         for (file_name, data) in files {
-            let file_path = format!("{}/{}", dir_path, file_name);
-            tokio::fs::write(&file_path, data).await.map_err(|e| {
+            tokio::fs::write(format!("{}/{}", dir_path, file_name), data).await.map_err(|e| {
                 UploadResponse::InternalServerError(Json(ResultVo {
                     code: 500,
                     msg: format!("写入文件失败: {}", e),
                     data: json!(null),
                 }))
             })?;
-            file_name_vec.push(file_path);
+            file_name_vec.push(file_name);
         }
         Ok(UploadResponse::Success(Json(ResultVo {
             code: 200,
