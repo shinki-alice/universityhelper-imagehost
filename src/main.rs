@@ -37,7 +37,7 @@ enum DownloadResponse {
     #[oai(status = 200)]
     Success(Attachment<Vec<u8>>),
     #[oai(status = 500)]
-    InternalServerError(Json<ResultVo>),
+    InternalServerError(None),
 }
 
 #[derive(ApiResponse)]
@@ -307,12 +307,7 @@ impl Api {
                 ))
             }
             None => Err(
-                DownloadResponse::InternalServerError(Json(ResultVo {
-                    code: 500,
-                    msg: "目录为空".to_string(),
-                    data: json!(null),
-                }))
-                .into(),
+                DownloadResponse::InternalServerError(None).into(),
             ),
         }
     }
